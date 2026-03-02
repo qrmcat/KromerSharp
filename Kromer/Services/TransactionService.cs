@@ -49,7 +49,7 @@ public class TransactionService(KromerContext context, ILogger<TransactionServic
 
         // Round before we check the amount - do not create empty transactions.
         transaction.Amount = Math.Round(transaction.Amount, 5, MidpointRounding.ToEven);
-        if (transaction is { Amount: <= 0 })
+        if (transaction is { Amount: <= 0, TransactionType: TransactionType.Transfer })
         {
             throw new KristException(ErrorCode.InvalidAmount);
         }
