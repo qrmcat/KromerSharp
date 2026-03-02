@@ -112,6 +112,7 @@ public class TransactionRepository(
     public async Task<TransactionDto> RequestCreateTransaction(string privateKey, string to, decimal amount,
         string? metadata = null)
     {
+        amount = decimal.Round(amount, 5, MidpointRounding.ToEven);
         if (amount <= 0)
         {
             throw new KristException(ErrorCode.InvalidAmount);
@@ -127,8 +128,6 @@ public class TransactionRepository(
         {
             throw new KristException(ErrorCode.AuthenticationFailed);
         }
-        
-        amount = decimal.Round(amount, 5, MidpointRounding.ToEven);
 
         if (amount > wallet.Balance)
         {
