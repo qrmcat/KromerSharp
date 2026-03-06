@@ -185,23 +185,4 @@ public class TransactionRepository(
 
         return TransactionDto.FromEntity(transaction);
     }
-
-    public static (string? MetaName, string? Name)? ParseName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return null;
-        }
-
-        var matches = Validation.MetaNameRegex().Matches(name);
-        if (matches.Count == 0)
-        {
-            return null;
-        }
-
-        var metaNameMatch = matches[1];
-        var nameMatch = matches[2];
-
-        return (metaNameMatch.Value, nameMatch.Value);
-    }
 }

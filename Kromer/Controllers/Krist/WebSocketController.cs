@@ -37,7 +37,7 @@ public class WebSocketController(SessionService sessionService, SessionManager.S
         var session = sessionService.ValidateSession(sessionId);
         using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
         session.WebSocket = webSocket;
-        await sessionManager.HandleWebSocketSessionAsync(session);
+        await sessionManager.HandleWebSocketSessionAsync(session, HttpContext.RequestAborted);
 
         return new EmptyResult();
     }

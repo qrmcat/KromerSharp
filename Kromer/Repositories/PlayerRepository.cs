@@ -66,7 +66,7 @@ public class PlayerRepository(
             throw new InvalidOperationException("Wallet was not created.");
         }
 
-        wallet.Balance = 100m;
+        wallet.Balance = GetInitialBalance();
         context.Entry(wallet).State = EntityState.Modified;
 
         player.OwnedWallets.Add(wallet.Id);

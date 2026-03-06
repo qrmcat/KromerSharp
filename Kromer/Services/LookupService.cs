@@ -80,6 +80,8 @@ public class LookupService(KromerContext context)
                 _ => throw new ArgumentOutOfRangeException(nameof(orderBy), orderBy, null)
             };
         }
+        
+        var total = await context.Transactions.CountAsync();
 
         transactions = transactions
             .Skip(offset)
@@ -90,7 +92,7 @@ public class LookupService(KromerContext context)
         return new KristResultTransactions
         {
             Ok = true,
-            Total = await context.Transactions.CountAsync(),
+            Total = total,
             Count = entities.Count,
             Transactions = entities.Select(TransactionDto.FromEntity).ToList()
         };
@@ -139,6 +141,8 @@ public class LookupService(KromerContext context)
                 _ => throw new ArgumentOutOfRangeException(nameof(orderBy), orderBy, null)
             };
         }
+        
+        var total = await context.Transactions.CountAsync();
 
         names = names
             .Skip(offset)
@@ -149,7 +153,7 @@ public class LookupService(KromerContext context)
         return new KristResultNames
         {
             Ok = true,
-            Total = await context.Transactions.CountAsync(),
+            Total = total,
             Count = entities.Count,
             Names = entities.Select(NameDto.FromEntity).ToList()
         };
@@ -192,6 +196,8 @@ public class LookupService(KromerContext context)
                 _ => throw new ArgumentOutOfRangeException(nameof(orderBy), orderBy, null)
             };
         }
+        
+        var total = await context.Transactions.CountAsync();
 
         transactions = transactions
             .Skip(offset)
@@ -202,7 +208,7 @@ public class LookupService(KromerContext context)
         return new KristResultTransactions
         {
             Ok = true,
-            Total = await context.Transactions.CountAsync(),
+            Total = total,
             Count = entities.Count,
             Transactions = entities.Select(TransactionDto.FromEntity).ToList()
         };
@@ -241,6 +247,8 @@ public class LookupService(KromerContext context)
                 _ => throw new ArgumentOutOfRangeException(nameof(orderBy), orderBy, null)
             };
         }
+        
+        var total = await context.Transactions.CountAsync();
 
         transactions = transactions
             .Skip(offset)
@@ -251,7 +259,7 @@ public class LookupService(KromerContext context)
         return new KristResultTransactions
         {
             Ok = true,
-            Total = await context.Transactions.CountAsync(),
+            Total = total,
             Count = entities.Count,
             Transactions = entities.Select(TransactionDto.FromEntity).ToList()
         };

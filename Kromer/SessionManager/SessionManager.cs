@@ -20,6 +20,8 @@ namespace Kromer.SessionManager;
 public class SessionManager(ILogger<SessionManager> logger, IServiceScopeFactory scopeFactory)
 {
     public static readonly TimeSpan ConnectionExpireTime = TimeSpan.FromSeconds(30);
+    private const int MaxMessageSize = 64 * 1024; // 64KiB
+
     private readonly ConcurrentDictionary<Guid, Session> _sessions = new();
 
     public static readonly JsonSerializerOptions JsonSerializerOptions = new()
@@ -94,7 +96,12 @@ public class SessionManager(ILogger<SessionManager> logger, IServiceScopeFactory
         if (_sessions.TryGetValue(sessionId, out session))
         {
             // Will still give you the session, but it should be discarded. 
-            return session.InstantiatedAt >= DateTime.UtcNow - ConnectionExpireTime;
+            if(session.InstantiatedAt < DateTime.UtcNow - ConnectionExpireTime) {
+                session = null;
+                return false;
+            }
+
+            return true;
         }
 
         return false;
@@ -143,7 +150,7 @@ public class SessionManager(ILogger<SessionManager> logger, IServiceScopeFactory
         });
     }
 
-    public async Task HandleWebSocketSessionAsync(Session session)
+    public async Task HandleWebSocketSessionAsync(Session session, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -168,9 +175,18 @@ public class SessionManager(ILogger<SessionManager> logger, IServiceScopeFactory
             var message = new StringBuilder();
             while (websocket?.State == WebSocketState.Open)
             {
-                var receiveResult = await websocket.ReceiveAsync(buffer, CancellationToken.None);
+                var receiveResult = await websocket.ReceiveAsync(buffer, cancellationToken);
                 if (receiveResult.MessageType == WebSocketMessageType.Text)
                 {
+                    if (message.Length + receiveResult.Count > MaxMessageSize) {
+                        logger.LogWarning("WebSocket session {SessionId} exceeded max message size. Closing.", session.Id);
+                        session.Connected = false;
+                        _sessions.TryRemove(session.Id, out _);
+                        await websocket.CloseAsync(WebSocketCloseStatus.MessageTooBig,
+                            "Message size limit exceeded", cancellationToken);
+                        return;
+                    }
+
                     message.Append(Encoding.UTF8.GetString(buffer, 0, receiveResult.Count));
                 }
                 else if (receiveResult.MessageType == WebSocketMessageType.Close)
@@ -180,7 +196,7 @@ public class SessionManager(ILogger<SessionManager> logger, IServiceScopeFactory
                     session.Connected = false;
                     _sessions.TryRemove(session.Id, out _);
                     await websocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Session closed",
-                        CancellationToken.None);
+                        cancellationToken);
 
                     logger.LogInformation("WebSocket session {SessionId} closed", session.Id);
                     break;
@@ -198,6 +214,8 @@ public class SessionManager(ILogger<SessionManager> logger, IServiceScopeFactory
         catch (Exception ex)
         {
             logger.LogError(ex, "Error handling WebSocket session {SessionId}", session.Id);
+            session.Connected = false;
+            _sessions.TryRemove(session.Id, out _);
         }
     }
 
