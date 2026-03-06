@@ -4,6 +4,9 @@ namespace Kromer.Utils;
 
 public static partial class Validation
 {
+    [GeneratedRegex(@"^(?:k[a-z0-9]{9}|[a-f0-9]{10})$", RegexOptions.Compiled)]
+    public static partial Regex AddressRegex();
+
     [GeneratedRegex(@"^k[a-z0-9]{9}$", RegexOptions.Compiled)]
     public static partial Regex V2AddressRegex();
 
@@ -66,9 +69,9 @@ public static partial class Validation
         return name.Trim().ToLowerInvariant();
     }
 
-    public static bool IsValidAddress(string address)
+    public static bool IsValidAddress(string address, bool v2Only = false)
     {
-        return V2AddressRegex().IsMatch(address);
+        return v2Only ? V2AddressRegex().IsMatch(address) : AddressRegex().IsMatch(address);
     }
 
     public static bool IsValidAddressList(string addressList)
