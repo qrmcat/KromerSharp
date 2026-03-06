@@ -28,10 +28,12 @@ builder.Services.AddScoped<TransactionRepository>();
 builder.Services.AddScoped<NameRepository>();
 builder.Services.AddScoped<MiscRepository>();
 builder.Services.AddScoped<PlayerRepository>();
+builder.Services.AddScoped<SearchRepository>();
 
 builder.Services.AddScoped<TransactionService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<LookupService>();
+builder.Services.AddScoped<SearchService>();
 
 builder.Services.AddSingleton<SessionManager>();
 builder.Services.AddSingleton(Channel.CreateUnbounded<IKristEvent>());
