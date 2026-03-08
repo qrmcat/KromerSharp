@@ -10,6 +10,11 @@ namespace Kromer.Controllers.Krist;
 [ApiController]
 public class MiscellaneousController(WalletRepository walletRepository, MiscRepository miscRepository) : ControllerBase
 {
+    /// <summary>
+    /// Authenticate a private key.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
     [HttpPost("login")]
     public async Task<ActionResult<KristResultAuthentication>> Authenticate(KristRequestPrivateKey request)
     {
@@ -23,12 +28,21 @@ public class MiscellaneousController(WalletRepository walletRepository, MiscRepo
         };
     }
 
+    /// <summary>
+    /// Get the message of the day.
+    /// </summary>
+    /// <returns></returns>
     [HttpGet("motd")]
     public ActionResult<KristMotdResponse> Motd()
     {
         return miscRepository.GetMotd();
     }
 
+    
+    /// <summary>
+    /// Get the wallet version.
+    /// </summary>
+    /// <returns></returns>
     [HttpGet("walletversion")]
     public ActionResult<KristWalletVersionResponse> WalletVersion()
     {
@@ -39,6 +53,10 @@ public class MiscellaneousController(WalletRepository walletRepository, MiscRepo
         };
     }
 
+    /// <summary>
+    /// Retrieve information about what's new.
+    /// </summary>
+    /// <returns>An object containing details about recent updates.</returns>
     [HttpGet("whatsnew")]
     public ActionResult<object> WhatsNew()
     {
@@ -46,6 +64,10 @@ public class MiscellaneousController(WalletRepository walletRepository, MiscRepo
         return new { };
     }
 
+    /// <summary>
+    /// Get the current network supply.
+    /// </summary>
+    /// <returns></returns>
     [HttpGet("supply")]
     public async Task<ActionResult<KristResultSupply>> Supply()
     {
@@ -56,6 +78,11 @@ public class MiscellaneousController(WalletRepository walletRepository, MiscRepo
         };
     }
 
+    /// <summary>
+    /// Get a V2 address.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
     [HttpPost("v2")]
     public ActionResult<KristResultV2Address> GetV2Address(KristRequestPrivateKey request)
     {

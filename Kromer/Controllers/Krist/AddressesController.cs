@@ -7,11 +7,17 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Kromer.Controllers.Krist;
 
-[Route("api/krist/[controller]")]
+[Route("api/krist/addresses")]
 [ApiController]
 public class AddressesController(WalletRepository walletRepository, TransactionRepository transactionRepository, NameRepository nameRepository)
     : ControllerBase
 {
+    /// <summary>
+    /// Retrieves a paginated list of Krist wallet addresses.
+    /// </summary>
+    /// <param name="limit">The maximum number of addresses to retrieve. The value is clamped between 1 and 1000. Default is 50.</param>
+    /// <param name="offset">The number of addresses to skip before starting to retrieve the list. Default is 0.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the paginated list of addresses in a <see cref="KristResultAddresses"/> object.</returns>
     [HttpGet("")]
     public async Task<ActionResult<KristResultAddresses>> GetAddresses([FromQuery] int limit = 50,
         [FromQuery] int offset = 0)
@@ -32,6 +38,13 @@ public class AddressesController(WalletRepository walletRepository, TransactionR
         return list;
     }
 
+    /// <summary>
+    /// Retrieves detailed information about a specific Krist wallet address.
+    /// </summary>
+    /// <param name="address">The Krist wallet address to retrieve details for.</param>
+    /// <param name="fetchNames">A boolean indicating whether to include associated names in the address information.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the details of the address in a <see cref="KristResultAddress"/> object.</returns>
+    /// <exception cref="KristException">Thrown when the specified address is not found.</exception>
     [HttpGet("{address}")]
     public async Task<ActionResult<KristResultAddress>> Address(string address, [FromQuery] bool fetchNames)
     {
@@ -49,6 +62,12 @@ public class AddressesController(WalletRepository walletRepository, TransactionR
         };
     }
 
+    /// <summary>
+    /// Retrieves a paginated list of the richest Krist wallet addresses, ordered by balance in descending order.
+    /// </summary>
+    /// <param name="limit">The maximum number of addresses to retrieve. The value is clamped between 1 and 1000. Default is 50.</param>
+    /// <param name="offset">The number of addresses to skip before starting to retrieve the list. Default is 0.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the paginated list of the richest addresses in a <see cref="KristResultAddresses"/> object.</returns>
     [HttpGet("rich")]
     public async Task<ActionResult<KristResultAddresses>> Richest([FromQuery] int limit = 50,
         [FromQuery] int offset = 0)
@@ -69,6 +88,15 @@ public class AddressesController(WalletRepository walletRepository, TransactionR
         return list;
     }
 
+    /// <summary>
+    /// Retrieves a list of recent transactions associated with a specified Krist wallet address.
+    /// </summary>
+    /// <param name="address">The Krist wallet address for which to fetch recent transactions.</param>
+    /// <param name="limit">The maximum number of transactions to retrieve. The value is clamped between 1 and 1000. Default is 50.</param>
+    /// <param name="offset">The number of transactions to skip before starting to retrieve the list. Default is 0.</param>
+    /// <param name="excludeMined">A flag indicating whether to exclude mined transactions from the result. Default is false.</param>
+    /// <returns>A task representing the asynchronous operation. The task result contains a list of recent transactions and associated metadata in a <see cref="KristResultTransactions"/> object.</returns>
+    /// <exception cref="KristException">Thrown when the specified wallet address does not exist.</exception>
     [HttpGet("{address}/transactions")]
     public async Task<ActionResult<KristResultTransactions>> RecentTransactions(string address,
         [FromQuery] int limit = 50,
@@ -96,8 +124,18 @@ public class AddressesController(WalletRepository walletRepository, TransactionR
         return list;
     }
 
+
+    /// <summary>
+    /// Retrieves a paginated list of Krist names associated with the specified wallet address.
+    /// </summary>
+    /// <param name="address">The wallet address whose associated names are to be retrieved.</param>
+    /// <param name="limit">The maximum number of names to retrieve. The value is clamped between 1 and 1000. Default is 50.</param>
+    /// <param name="offset">The number of names to skip before starting to retrieve the list. Default is 0.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the paginated list of names in a <see cref="KristResultNames"/> object.</returns>
+    /// <exception cref="KristException">Thrown when the specified wallet address does not exist.</exception>
     [HttpGet("{address}/names")]
-    public async Task<ActionResult<KristResultNames>> Names(string address, [FromQuery] int limit = 50, [FromQuery] int offset = 0)
+    public async Task<ActionResult<KristResultNames>> Names(string address, [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0)
     {
         if (!await walletRepository.ExistsAsync(address))
         {

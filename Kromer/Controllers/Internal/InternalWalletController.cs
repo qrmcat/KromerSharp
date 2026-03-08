@@ -10,6 +10,11 @@ namespace Kromer.Controllers.Internal;
 [RequireInternalKey]
 public class InternalWalletController(PlayerRepository playerRepository) : ControllerBase
 {
+    /// <summary>
+    /// Creates a new wallet for the player.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
     [HttpPost("create")]
     public async Task<ActionResult<AddressCreationResponse>> CreateWallet([FromBody] PlayerRequest request)
     {
@@ -17,6 +22,11 @@ public class InternalWalletController(PlayerRepository playerRepository) : Contr
         return response;
     }
 
+    /// <summary>
+    /// Give money to a player's wallet.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
     [HttpPost("give-money")]
     public async Task<ActionResult<WalletResponse>> GiveMoney([FromBody] LoadCreditRequest request)
     {
@@ -24,6 +34,11 @@ public class InternalWalletController(PlayerRepository playerRepository) : Contr
         return response;
     }
 
+    /// <summary>
+    /// Get a player's wallet.
+    /// </summary>
+    /// <param name="uuid"></param>
+    /// <returns></returns>
     [HttpGet("by-player/{uuid:guid}")]
     public async Task<ActionResult<WalletsResponse>> GetWalletByPlayer(Guid uuid)
     {

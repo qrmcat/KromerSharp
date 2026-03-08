@@ -8,10 +8,18 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Kromer.Controllers.Krist;
 
-[Route("api/krist/[controller]")]
+[Route("api/krist/lookup")]
 [ApiController]
 public class LookupController(LookupService lookupService) : ControllerBase
 {
+    
+    /// <summary>
+    /// Lookup addresses.
+    /// </summary>
+    /// <param name="addresses"></param>
+    /// <param name="fetchNames"></param>
+    /// <returns></returns>
+    /// <exception cref="KristParameterException"></exception>
     [HttpGet("addresses/{addresses}")]
     public async Task<ActionResult<KristLookupAddresses>> GetAddresses(string addresses,
         [FromQuery] bool fetchNames = false)
@@ -25,6 +33,18 @@ public class LookupController(LookupService lookupService) : ControllerBase
         return await lookupService.GetAddresses(addressList.ToList(), fetchNames);
     }
 
+    
+    /// <summary>
+    /// Lookup transactions from addresses.
+    /// </summary>
+    /// <param name="addresses"></param>
+    /// <param name="orderBy"></param>
+    /// <param name="order"></param>
+    /// <param name="includeMined"></param>
+    /// <param name="limit"></param>
+    /// <param name="offset"></param>
+    /// <returns></returns>
+    /// <exception cref="KristParameterException"></exception>
     [HttpGet("transactions/{addresses?}")]
     [HttpGet("transactions")]
     public async Task<ActionResult<KristResultTransactions>> GetTransactions(string? addresses,
@@ -51,6 +71,16 @@ public class LookupController(LookupService lookupService) : ControllerBase
         return await lookupService.GetTransactions(addressList?.ToList() ?? [], orderByParameter, orderParameter, includeMined, limit, offset);
     }
 
+    /// <summary>
+    /// Lookup names from addresses.
+    /// </summary>
+    /// <param name="addresses"></param>
+    /// <param name="orderBy"></param>
+    /// <param name="order"></param>
+    /// <param name="limit"></param>
+    /// <param name="offset"></param>
+    /// <returns></returns>
+    /// <exception cref="KristParameterException"></exception>
     [HttpGet("names/{addresses?}")]
     [HttpGet("names")]
     public async Task<ActionResult<KristResultNames>> GetNames(string? addresses,
@@ -76,6 +106,17 @@ public class LookupController(LookupService lookupService) : ControllerBase
         return await lookupService.GetNames(addressList?.ToList() ?? [], orderByParameter, orderParameter, limit, offset);
     }
 
+    
+    /// <summary>
+    /// Lookup a name's history.
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="orderBy"></param>
+    /// <param name="order"></param>
+    /// <param name="limit"></param>
+    /// <param name="offset"></param>
+    /// <returns></returns>
+    /// <exception cref="KristParameterException"></exception>
     [HttpGet("names/{name}/history")]
     public async Task<ActionResult<KristResultTransactions>> GetNameHistory(string name,
         [FromQuery] string orderBy = "id",
@@ -98,6 +139,16 @@ public class LookupController(LookupService lookupService) : ControllerBase
         return await lookupService.GetNameHistory(name, orderByParameter, orderParameter, limit, offset);
     }
 
+    /// <summary>
+    /// Lookup a name's transactions.
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="orderBy"></param>
+    /// <param name="order"></param>
+    /// <param name="limit"></param>
+    /// <param name="offset"></param>
+    /// <returns></returns>
+    /// <exception cref="KristParameterException"></exception>
     [HttpGet("names/{name}/transactions")]
     public async Task<ActionResult<KristResultTransactions>> GetNameTransactions(string name,
         [FromQuery] string orderBy = "id",

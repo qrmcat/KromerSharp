@@ -1,6 +1,8 @@
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
+using System.Xml.XPath;
 using Kromer;
 using Kromer.Data;
 using Kromer.Models.Api.Krist;
@@ -67,7 +69,40 @@ builder.Services.AddControllers(options =>
     });
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(o =>
+{
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+
+    if (!File.Exists(xmlPath)) return;
+
+    var xmlDoc = new XPathDocument(xmlPath);
+    var xmlNav = xmlDoc.CreateNavigator();
+
+    o.AddOperationTransformer((operation, context, ct) =>
+    {
+        var method = context.Description.ActionDescriptor
+            .EndpointMetadata
+            .OfType<MethodInfo>()
+            .FirstOrDefault();
+
+        if (method is null) return Task.CompletedTask;
+
+        var memberName = $"M:{method.DeclaringType!.FullName}.{method.Name}({string.Join(",", method.GetParameters().Select(p => p.ParameterType.FullName))})";
+        var summary = xmlNav.SelectSingleNode($"//member[@name='{memberName}']/summary");
+        if (summary != null)
+            operation.Summary = System.Text.RegularExpressions.Regex.Replace(summary.InnerXml.Trim(), @"\s+", " ");
+
+        var remarks = xmlNav.SelectSingleNode($"//member[@name='{memberName}']/remarks");
+        if (remarks != null)
+            operation.Description = System.Text.RegularExpressions.Regex.Replace(remarks.InnerXml.Trim(), @"\s+", " ");
+
+        if (summary != null)
+            operation.Summary = summary.InnerXml.Trim();
+
+        return Task.CompletedTask;
+    });
+});
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -102,6 +137,12 @@ app.UseWebSockets();
 app.UseCors();
 
 app.MapControllers();
+
+app.UseSwaggerUI(o =>
+{
+    o.SwaggerEndpoint("/openapi/v1.json", "Kromer API V1");
+    o.RoutePrefix = string.Empty;
+});
 
 app.UseExceptionHandler(builder =>
 {

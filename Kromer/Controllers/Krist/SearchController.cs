@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Kromer.Controllers.Krist;
 
-[Route("api/krist/[controller]")]
+[Route("api/krist/search")]
 [ApiController]
 public class SearchController(SearchService searchService) : ControllerBase
 {
