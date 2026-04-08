@@ -45,4 +45,11 @@ public class InternalWalletController(PlayerRepository playerRepository) : Contr
         var response = await playerRepository.GetWalletByPlayerAsync(uuid);
         return response;
     }
+    
+    [HttpPost("update-player")]
+    public async Task<ActionResult> UpdatePlayer([FromBody] PlayerUpdateRequest request)
+    {
+        await playerRepository.UpdatePlayerAsync(request.Uuid, request.Username);
+        return Ok();
+    }
 }

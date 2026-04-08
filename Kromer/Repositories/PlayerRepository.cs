@@ -127,4 +127,16 @@ public class PlayerRepository(
             Wallet = wallets,
         };
     }
+
+    public async Task UpdatePlayerAsync(Guid uuid, string username)
+    {
+        var player = await context.Players.FirstOrDefaultAsync(q => q.Id == uuid);
+        if (player is null)
+        {
+            throw new KromerException(ErrorCode.PlayerError);
+        }
+        
+        player.Name = username;
+        await context.SaveChangesAsync();
+    }
 }
