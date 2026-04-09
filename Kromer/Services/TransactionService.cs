@@ -42,7 +42,7 @@ public class TransactionService(
             throw new KristException(ErrorCode.InvalidAmount);
         }
 
-        if (sender.Balance < amount)
+        if (sender.Balance < amount && sender.Address != ServerWallet)
         {
             throw new KristException(ErrorCode.InsufficientFunds);
         }
