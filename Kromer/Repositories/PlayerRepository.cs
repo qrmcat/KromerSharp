@@ -82,8 +82,8 @@ public class PlayerRepository(
 
     public async Task<WalletResponse> GiveMoneyAsync(string address, decimal amount)
     {
-        var sender = await walletRepository.GetWalletFromAddress(address);
-        var recipient =  await walletRepository.GetWalletFromAddress(TransactionService.ServerWallet);
+        var sender =  await walletRepository.GetWalletFromAddress(TransactionService.ServerWallet);
+        var recipient = await walletRepository.GetWalletFromAddress(address);
 
         var transaction = transactionService.InitiateTransaction(sender, recipient, amount, TransactionType.Mined);
         await transactionService.CommitTransactionAsync(sender, recipient, transaction);
