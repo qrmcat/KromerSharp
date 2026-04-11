@@ -28,18 +28,11 @@ public class TransactionService(
         TransactionType transactionType = TransactionType.Transfer)
     {
         // If mined, sender is null (or serverwelf actually, because too late to fix it)
-        // If amount is negative, swap sender and recipient, abs amount and use Transfer type.
+        // If amount is negative, swap sender and recipient, abs amount
         if (transactionType == TransactionType.Mined && amount < 0)
         {
             (sender, recipient) = (recipient, sender);
             amount = Math.Abs(amount);
-            transactionType = TransactionType.Transfer;
-
-            // Guard against sender not being serverwelf
-            if (sender?.Address != ServerWallet)
-            {
-                throw new KristException(ErrorCode.InvalidRequestType);
-            }
         }
 
         if (sender is null || recipient is null)
