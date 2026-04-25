@@ -1,6 +1,9 @@
-﻿using Kromer.Attributes;
+﻿using System.Net;
+using Kromer.Attributes;
 using Kromer.Models.Api.Internal;
 using Kromer.Repositories;
+using Kromer.Services;
+using Kromer.Utils;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kromer.Controllers.Internal;
@@ -8,7 +11,7 @@ namespace Kromer.Controllers.Internal;
 [Route("api/_internal/wallet")]
 [ApiController]
 [RequireInternalKey]
-public class InternalWalletController(PlayerRepository playerRepository) : ControllerBase
+public class InternalWalletController(PlayerRepository playerRepository, DiscordService discordService) : ControllerBase
 {
     /// <summary>
     /// Creates a new wallet for the player.
@@ -31,6 +34,14 @@ public class InternalWalletController(PlayerRepository playerRepository) : Contr
     public async Task<ActionResult<WalletResponse>> GiveMoney([FromBody] LoadCreditRequest request)
     {
         var response = await playerRepository.GiveMoneyAsync(request.Address, request.Amount);
+
+        var remoteAddress = HttpContext.Connection.RemoteIpAddress ??
+                            throw new InvalidOperationException("Could not get IP address of remote connection.");
+        if (!LocalAddress.IsLanAddress(remoteAddress))
+        {
+            await discordService.SendGiveMoneyAlertAsync(request.Address, request.Amount, remoteAddress);
+        }
+
         return response;
     }
 
@@ -45,7 +56,7 @@ public class InternalWalletController(PlayerRepository playerRepository) : Contr
         var response = await playerRepository.GetWalletByPlayerAsync(uuid);
         return response;
     }
-    
+
     [HttpPost("update-player")]
     public async Task<ActionResult> UpdatePlayer([FromBody] PlayerUpdateRequest request)
     {
