@@ -51,9 +51,9 @@ public class SubscriptionsController(SubscriptionRepository subscriptionReposito
     public async Task<ActionResult<Result<SubscriptionListResponse>>> ListSubscriptions(
         [FromQuery] string? address = null,
         [FromQuery] string? name = null,
-        [FromQuery] bool excludeOwned = false,
-        [FromQuery] bool onlyOwned = false,
-        [FromQuery] bool onlyUnsubscribable = true,
+        [FromQuery(Name = "exclude_owned")] bool excludeOwned = false,
+        [FromQuery(Name = "only_owned")] bool onlyOwned = false,
+        [FromQuery(Name = "only_unsubscribable")] bool onlyUnsubscribable = true,
         [FromQuery] int limit = 50,
         [FromQuery] int offset = 0)
     {

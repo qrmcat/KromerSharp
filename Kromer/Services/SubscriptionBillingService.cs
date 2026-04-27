@@ -14,11 +14,24 @@ public class SubscriptionBillingService(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var repository = scope.ServiceProvider.GetRequiredService<SubscriptionRepository>();
-                var processed = await repository.BillDueSubscriptionsAsync(stoppingToken);
+                var processed = 0;
+                var totalProcessed = 0;
 
-                if (processed > 0)
+                do
                 {
-                    logger.LogInformation("Processed {Count} due subscription payments", processed);
+                    processed = await repository.BillDueSubscriptionsAsync(stoppingToken);
+                    totalProcessed += processed;
+
+                    if (processed == 100)
+                    {
+                        await Task.Yield();
+                    }
+                } while (processed == 100 &&
+                         !stoppingToken.IsCancellationRequested);
+
+                if (totalProcessed > 0)
+                {
+                    logger.LogInformation("Processed {Count} due subscription payments", totalProcessed);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

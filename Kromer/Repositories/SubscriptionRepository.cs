@@ -59,8 +59,11 @@ public class SubscriptionRepository(
     {
         AssertPrivateKey(privateKey);
 
+        var now = DateTime.UtcNow;
         var contract = await context.SubscriptionContracts
-            .Include(q => q.WalletSubscriptions.Where(s => s.Status == SubscriptionStatus.Active))
+            .Include(q => q.WalletSubscriptions.Where(s =>
+                s.Status == SubscriptionStatus.Active ||
+                (s.CancellationReason == ReasonUnsubscribed && s.NextPayment > now)))
             .FirstOrDefaultAsync(q => q.Id == id);
 
         if (contract is null)
@@ -72,7 +75,6 @@ public class SubscriptionRepository(
 
         if (contract.Status == SubscriptionStatus.Active)
         {
-            var now = DateTime.UtcNow;
             contract.Status = SubscriptionStatus.Cancelled;
             contract.CancelledAt = now;
 
@@ -148,16 +150,20 @@ public class SubscriptionRepository(
             }
 
             contextAddress = address;
+            var now = DateTime.UtcNow;
             var ownedBaseNames = context.Names
                 .Where(q => q.Owner == address)
                 .Select(q => q.Name);
 
             var subscribedContracts = context.WalletSubscriptions
-                .Where(q => q.WalletAddress == address && q.Status == SubscriptionStatus.Active);
+                .Where(q => q.WalletAddress == address &&
+                            (q.Status == SubscriptionStatus.Active ||
+                             (q.CancellationReason == ReasonUnsubscribed && q.NextPayment > now)));
 
             if (onlyUnsubscribable)
             {
-                subscribedContracts = subscribedContracts.Where(q => q.CanUnsubscribe);
+                subscribedContracts = subscribedContracts.Where(q =>
+                    q.Status == SubscriptionStatus.Active && q.CanUnsubscribe);
             }
 
             var subscribedIds = subscribedContracts.Select(q => q.ContractId);
@@ -237,6 +243,28 @@ public class SubscriptionRepository(
         }
 
         var now = DateTime.UtcNow;
+        var cancelledWithRemainingTime = await context.WalletSubscriptions.FirstOrDefaultAsync(q =>
+            q.ContractId == contract.Id &&
+            q.WalletAddress == subscriber.Address &&
+            q.CancellationReason == ReasonUnsubscribed &&
+            q.NextPayment > now);
+        if (cancelledWithRemainingTime is not null)
+        {
+            cancelledWithRemainingTime.Status = SubscriptionStatus.Active;
+            cancelledWithRemainingTime.CancellationReason = null;
+            cancelledWithRemainingTime.CancelledAt = null;
+            context.WalletSubscriptions.Update(cancelledWithRemainingTime);
+            await context.SaveChangesAsync();
+
+            await EmitSubscriptionEventAsync("subscribe", contract, cancelledWithRemainingTime, owner.Address,
+                SubscriptionStatus.Active);
+
+            return new SubscribeResponse
+            {
+                NextPayment = cancelledWithRemainingTime.NextPayment,
+            };
+        }
+
         var subscription = new WalletSubscriptionEntity
         {
             ContractId = contract.Id,
@@ -273,7 +301,7 @@ public class SubscriptionRepository(
 
         try
         {
-            await ChargeSubscriptionAsync(contract, subscription, subscriber, owner, now);
+            await ChargeSubscriptionAsync(contract, subscription, subscriber, owner, subscription.NextPayment, now);
         }
         catch (KristException ex) when (ex.Code == ErrorCode.InsufficientFunds)
         {
@@ -393,14 +421,20 @@ public class SubscriptionRepository(
             return;
         }
 
-        try
+        while (subscription.Status == SubscriptionStatus.Active && subscription.NextPayment <= now)
         {
-            await ChargeSubscriptionAsync(contract, subscription, subscriber, owner, now);
-        }
-        catch (KristException ex) when (ex.Code == ErrorCode.InsufficientFunds)
-        {
-            await CancelDueSubscriptionAsync(contract, subscription, ownerAddress, ReasonInsufficientFunds,
-                cancellationToken);
+            var dueAt = subscription.NextPayment;
+            var nextPayment = dueAt.AddMinutes(contract.PeriodMinutes);
+
+            try
+            {
+                await ChargeSubscriptionAsync(contract, subscription, subscriber, owner, nextPayment, dueAt);
+            }
+            catch (KristException ex) when (ex.Code == ErrorCode.InsufficientFunds)
+            {
+                await CancelDueSubscriptionAsync(contract, subscription, ownerAddress, ReasonInsufficientFunds,
+                    cancellationToken);
+            }
         }
     }
 
@@ -414,12 +448,13 @@ public class SubscriptionRepository(
     }
 
     private async Task ChargeSubscriptionAsync(SubscriptionContractEntity contract, WalletSubscriptionEntity subscription,
-        WalletEntity subscriber, WalletEntity owner, DateTime now)
+        WalletEntity subscriber, WalletEntity owner, DateTime nextPayment, DateTime transactionDate)
     {
-        subscription.NextPayment = now.AddMinutes(contract.PeriodMinutes);
+        subscription.NextPayment = nextPayment;
         context.WalletSubscriptions.Update(subscription);
 
         var transaction = transactionService.InitiateTransaction(subscriber, owner, contract.Price);
+        transaction.Date = transactionDate;
         transaction.Metadata = $"subscription={contract.Id};wallet_subscription={subscription.Id}";
 
         await transactionService.CommitTransactionAsync(subscriber, owner, transaction);
@@ -435,8 +470,12 @@ public class SubscriptionRepository(
 
     private async Task<SubscriptionDto> BuildDtoAsync(SubscriptionContractEntity contract, string? address)
     {
+        var now = DateTime.UtcNow;
         var subscribers = await context.WalletSubscriptions.CountAsync(q =>
-            q.ContractId == contract.Id && q.Status == SubscriptionStatus.Active);
+            q.ContractId == contract.Id &&
+            contract.Status == SubscriptionStatus.Active &&
+            (q.Status == SubscriptionStatus.Active ||
+             (q.CancellationReason == ReasonUnsubscribed && q.NextPayment > now)));
 
         var dto = new SubscriptionDto
         {
@@ -457,13 +496,15 @@ public class SubscriptionRepository(
         var subscription = await context.WalletSubscriptions.FirstOrDefaultAsync(q =>
             q.ContractId == contract.Id &&
             q.WalletAddress == address &&
-            q.Status == SubscriptionStatus.Active);
+            contract.Status == SubscriptionStatus.Active &&
+            (q.Status == SubscriptionStatus.Active ||
+             (q.CancellationReason == ReasonUnsubscribed && q.NextPayment > now)));
         var ownerAddress = await ResolveCurrentOwnerAddressAsync(contract.BaseName, throwIfMissing: false);
 
         dto.Subscribed = subscription is not null;
         dto.Owns = ownerAddress == address;
         dto.NextPayment = subscription?.NextPayment;
-        dto.Unsubscribable = subscription?.CanUnsubscribe;
+        dto.Unsubscribable = subscription?.Status == SubscriptionStatus.Active && subscription.CanUnsubscribe;
 
         return dto;
     }
@@ -605,7 +646,12 @@ public class SubscriptionRepository(
             SubscriberAddress = subscription?.WalletAddress,
             Status = SnakeCaseNamingPolicy.Convert(status.ToString()),
             Reason = reason,
-            NextPayment = subscription?.Status == SubscriptionStatus.Active ? subscription.NextPayment : null,
+            NextPayment = subscription is not null &&
+                          (subscription.Status == SubscriptionStatus.Active ||
+                           (subscription.CancellationReason == ReasonUnsubscribed &&
+                            subscription.NextPayment > DateTime.UtcNow))
+                ? subscription.NextPayment
+                : null,
         });
     }
 
