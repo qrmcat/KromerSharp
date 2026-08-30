@@ -25,6 +25,7 @@ public class SubscriptionRepository(
     private const string ReasonOwnerMissing = "owner_missing";
     private const string ReasonSameWallet = "same_wallet";
     private const int MaxAllowedSubscriberAddresses = 1000;
+    private const int MaxQueryValues = 1000;
 
     public async Task<CreateSubscriptionResponse> CreateContractAsync(CreateSubscriptionRequest? request)
     {
@@ -79,7 +80,7 @@ public class SubscriptionRepository(
                 SubscriptionStatus.Closed);
         }
 
-        return await BuildDtoAsync(contract, owner.Address);
+        return await BuildDtoAsync(contract, [owner.Address]);
     }
 
     public async Task<SubscriptionDto> CancelContractAsync(int id, string? privateKey)
@@ -127,15 +128,12 @@ public class SubscriptionRepository(
             }
         }
 
-        return await BuildDtoAsync(contract, owner.Address);
+        return await BuildDtoAsync(contract, [owner.Address]);
     }
 
-    public async Task<SubscriptionDto> GetContractAsync(int id, string? address)
+    public async Task<SubscriptionDto> GetContractAsync(int id, IEnumerable<string>? addresses)
     {
-        if (!string.IsNullOrWhiteSpace(address) && !Validation.IsValidAddress(address))
-        {
-            throw new KromerException(ErrorCode.InvalidParameter);
-        }
+        var contextAddresses = NormalizeAddressFilters(addresses);
 
         var contract = await context.SubscriptionContracts.FirstOrDefaultAsync(q => q.Id == id);
         if (contract is null)
@@ -143,12 +141,12 @@ public class SubscriptionRepository(
             throw new KromerException(ErrorCode.ResourceNotFound);
         }
 
-        return await BuildDtoAsync(contract, address);
+        return await BuildDtoAsync(contract, contextAddresses);
     }
 
     public async Task<SubscriptionListResponse> ListContractsAsync(
-        string? address,
-        string? name,
+        IEnumerable<string>? addresses,
+        IEnumerable<string>? names,
         bool excludeOwned,
         bool onlyOwned,
         bool onlyUnsubscribable,
@@ -161,29 +159,31 @@ public class SubscriptionRepository(
         var query = context.SubscriptionContracts
             .Where(q => q.Status != SubscriptionStatus.Cancelled);
 
-        string? contextAddress = null;
-        if (!string.IsNullOrWhiteSpace(name))
+        var contextAddresses = NormalizeAddressFilters(addresses);
+        var receiverFilters = await NormalizeReceiverFiltersAsync(names, requireExisting: false);
+        if (receiverFilters.Count > 0)
         {
-            var receiver = await NormalizeReceiverAsync(name, requireExisting: false);
-            query = receiver.IsMetaname
-                ? query.Where(q => q.Receiver == receiver.Receiver)
-                : query.Where(q => q.BaseName == receiver.BaseName);
-        }
-        else if (!string.IsNullOrWhiteSpace(address))
-        {
-            if (!Validation.IsValidAddress(address))
-            {
-                throw new KromerException(ErrorCode.InvalidParameter);
-            }
+            var receivers = receiverFilters
+                .Where(q => q.IsMetaname)
+                .Select(q => q.Receiver)
+                .ToArray();
+            var baseNames = receiverFilters
+                .Where(q => !q.IsMetaname)
+                .Select(q => q.BaseName)
+                .ToArray();
 
-            contextAddress = address;
+            query = query.Where(q => receivers.Contains(q.Receiver) || baseNames.Contains(q.BaseName));
+        }
+
+        if (contextAddresses.Count > 0)
+        {
             var now = DateTime.UtcNow;
             var ownedBaseNames = context.Names
-                .Where(q => q.Owner == address)
+                .Where(q => contextAddresses.Contains(q.Owner))
                 .Select(q => q.Name);
 
             var subscribedContracts = context.WalletSubscriptions
-                .Where(q => q.WalletAddress == address &&
+                .Where(q => contextAddresses.Contains(q.WalletAddress) &&
                             (q.Status == SubscriptionStatus.Active ||
                              (q.CancellationReason == ReasonUnsubscribed && q.NextPayment > now)));
 
@@ -203,12 +203,13 @@ public class SubscriptionRepository(
             {
                 query = query.Where(q => subscribedIds.Contains(q.Id) && !ownedBaseNames.Contains(q.BaseName));
             }
-            else
+            else if (receiverFilters.Count == 0)
             {
                 query = query.Where(q => subscribedIds.Contains(q.Id) || ownedBaseNames.Contains(q.BaseName));
             }
         }
-        else
+
+        if (receiverFilters.Count == 0 && contextAddresses.Count == 0)
         {
             throw new KromerException(ErrorCode.InvalidParameter);
         }
@@ -223,7 +224,7 @@ public class SubscriptionRepository(
         var dtos = new List<SubscriptionDto>();
         foreach (var contract in contracts)
         {
-            dtos.Add(await BuildDtoAsync(contract, contextAddress));
+            dtos.Add(await BuildDtoAsync(contract, contextAddresses));
         }
 
         return new SubscriptionListResponse
@@ -255,12 +256,16 @@ public class SubscriptionRepository(
                 .FromSqlInterpolated(
                     $"SELECT * FROM subscription_contracts WHERE id = {contractId} FOR UPDATE")
                 .FirstOrDefaultAsync();
-            if (lockedContract is null || lockedContract.Status == SubscriptionStatus.Cancelled)
+            if (lockedContract is null)
             {
                 throw new KromerException(ErrorCode.ResourceNotFound);
             }
 
             contract = lockedContract;
+            if (contract.Status == SubscriptionStatus.Cancelled)
+            {
+                throw new KromerException(ErrorCode.SubscriptionCancelled);
+            }
 
             var existing = await context.WalletSubscriptions.FirstOrDefaultAsync(q =>
                 q.ContractId == contract.Id &&
@@ -375,7 +380,7 @@ public class SubscriptionRepository(
 
         if (!subscription.CanUnsubscribe)
         {
-            throw new KromerException(ErrorCode.InvalidParameter);
+            throw new KromerException(ErrorCode.SubscriptionCannotUnsubscribe);
         }
 
         CancelWalletSubscription(subscription, ReasonUnsubscribed, DateTime.UtcNow);
@@ -485,6 +490,13 @@ public class SubscriptionRepository(
         transaction.Date = transactionDate;
         transaction.Metadata = $"subscription={contract.Id};wallet_subscription={subscription.Id}";
 
+        var receiver = Validation.ParseMetaName(contract.Receiver);
+        if (receiver.Valid)
+        {
+            transaction.SentName = receiver.Name;
+            transaction.SentMetaname = string.IsNullOrWhiteSpace(receiver.Meta) ? null : receiver.Meta;
+        }
+
         await transactionService.CommitTransactionAsync(subscriber, owner, transaction);
 
         await eventChannel.Writer.WriteAsync(new KristTransactionEvent
@@ -496,7 +508,8 @@ public class SubscriptionRepository(
             SubscriptionStatus.Active);
     }
 
-    private async Task<SubscriptionDto> BuildDtoAsync(SubscriptionContractEntity contract, string? address)
+    private async Task<SubscriptionDto> BuildDtoAsync(SubscriptionContractEntity contract,
+        IReadOnlyCollection<string> contextAddresses)
     {
         var now = DateTime.UtcNow;
         var subscribers = contract.Status == SubscriptionStatus.Cancelled
@@ -516,23 +529,31 @@ public class SubscriptionRepository(
             Status = contract.Status,
         };
 
-        if (string.IsNullOrWhiteSpace(address))
+        dto.OwnerAddress = await ResolveCurrentOwnerAddressAsync(contract.BaseName, throwIfMissing: false);
+
+        if (contextAddresses.Count == 0)
         {
             return dto;
         }
 
-        var subscription = await context.WalletSubscriptions.FirstOrDefaultAsync(q =>
-            q.ContractId == contract.Id &&
-            q.WalletAddress == address &&
-            contract.Status != SubscriptionStatus.Cancelled &&
-            (q.Status == SubscriptionStatus.Active ||
-             (q.CancellationReason == ReasonUnsubscribed && q.NextPayment > now)));
-        var ownerAddress = await ResolveCurrentOwnerAddressAsync(contract.BaseName, throwIfMissing: false);
+        var contextAddressArray = contextAddresses.ToArray();
+        var subscriptions = await context.WalletSubscriptions
+            .Where(q =>
+                q.ContractId == contract.Id &&
+                contextAddressArray.Contains(q.WalletAddress) &&
+                contract.Status != SubscriptionStatus.Cancelled &&
+                (q.Status == SubscriptionStatus.Active ||
+                 (q.CancellationReason == ReasonUnsubscribed && q.NextPayment > now)))
+            .OrderBy(q => q.WalletAddress)
+            .Select(q => new WalletSubscriptionDto
+            {
+                Address = q.WalletAddress,
+                NextPayment = q.NextPayment,
+                Unsubscribable = q.Status == SubscriptionStatus.Active && q.CanUnsubscribe,
+            })
+            .ToListAsync();
 
-        dto.Subscribed = subscription is not null;
-        dto.Owns = ownerAddress == address;
-        dto.NextPayment = subscription?.NextPayment;
-        dto.Unsubscribable = subscription?.Status == SubscriptionStatus.Active && subscription.CanUnsubscribe;
+        dto.WalletSubscriptions = subscriptions.Count > 0 ? subscriptions : null;
 
         return dto;
     }
@@ -571,17 +592,17 @@ public class SubscriptionRepository(
     private async Task<string?> ResolveCurrentOwnerAddressAsync(string baseName, bool throwIfMissing)
     {
         var name = await context.Names.FirstOrDefaultAsync(q => q.Name == baseName);
-        if (name is null)
+        if (name is not null)
         {
-            if (throwIfMissing)
-            {
-                throw new KromerException(ErrorCode.NameNotFound);
-            }
-
-            return null;
+            return name.Owner;
         }
 
-        return name.Owner;
+        if (throwIfMissing)
+        {
+            throw new KromerException(ErrorCode.NameNotFound);
+        }
+
+        return null;
     }
 
     private async Task<NormalizedReceiver> NormalizeReceiverAsync(string? value, bool requireExisting)
@@ -631,6 +652,57 @@ public class SubscriptionRepository(
         }
 
         return new NormalizedReceiver(receiver, baseName, isMetaname);
+    }
+
+    private static List<string> NormalizeAddressFilters(IEnumerable<string>? values)
+    {
+        if (values is null)
+        {
+            return [];
+        }
+
+        var normalized = values
+            .Select(q => q.Trim().ToLowerInvariant())
+            .ToList();
+
+        if (normalized.Count > MaxQueryValues ||
+            normalized.Any(q => string.IsNullOrWhiteSpace(q) || !Validation.IsValidAddress(q)))
+        {
+            throw new KromerException(ErrorCode.InvalidParameter);
+        }
+
+        return normalized.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private async Task<List<NormalizedReceiver>> NormalizeReceiverFiltersAsync(IEnumerable<string>? values,
+        bool requireExisting)
+    {
+        var receivers = new List<NormalizedReceiver>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        if (values is null)
+        {
+            return receivers;
+        }
+
+        var queryValues = values.ToList();
+        if (queryValues.Count > MaxQueryValues)
+        {
+            throw new KromerException(ErrorCode.InvalidParameter);
+        }
+
+        foreach (var value in queryValues)
+        {
+            var receiver = await NormalizeReceiverAsync(value.Trim(), requireExisting);
+            var key = receiver.IsMetaname ? $"receiver:{receiver.Receiver}" : $"base:{receiver.BaseName}";
+
+            if (seen.Add(key))
+            {
+                receivers.Add(receiver);
+            }
+        }
+
+        return receivers;
     }
 
     private static void AssertCreateRequest(CreateSubscriptionRequest? request)

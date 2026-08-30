@@ -26,14 +26,8 @@ public class SubscriptionDto
     public SubscriptionStatus Status { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? Subscribed { get; set; }
+    public string? OwnerAddress { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? Owns { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public DateTime? NextPayment { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? Unsubscribable { get; set; }
+    public IReadOnlyCollection<WalletSubscriptionDto>? WalletSubscriptions { get; set; }
 }

@@ -115,6 +115,32 @@ builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
 
+// Please don't murder me for this, I think this is how one is supposed to auto apply migrations..
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<KromerContext>();
+    var hasExistingKromerSchema = db.Database
+        .SqlQueryRaw<bool>("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'wallets') AS \"Value\"")
+        .Single();
+
+    if (hasExistingKromerSchema)
+    {
+        var pendingMigrations = db.Database.GetPendingMigrations().ToArray();
+
+        if (pendingMigrations.Length > 0)
+        {
+            app.Logger.LogInformation("Applying {MigrationCount} pending database migration(s): {Migrations}",
+                pendingMigrations.Length, string.Join(", ", pendingMigrations));
+
+            db.Database.Migrate();
+        }
+    }
+    else
+    {
+        app.Logger.LogWarning("Skipping database migrations because the existing Kromer schema was not found.");
+    }
+}
+
 app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
